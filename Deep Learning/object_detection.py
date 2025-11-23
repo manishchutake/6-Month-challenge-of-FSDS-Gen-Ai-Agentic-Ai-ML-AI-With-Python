@@ -1,34 +1,58 @@
+# -------------->  IMPORT LIBRARY
 import cv2
-from ultralytics import YOLO
+import PIL
+import urllib
+import numpy as np
+import mediapipe as mp
+import matplotlib.pyplot as plt
+mp_objectron = mp.solutions.objectron
+mp_drawing = mp.solutions.drawing_utils # helper function
 
-# Load the YOLOv8 model
-model = YOLO('yolov8n.pt')
+# -----------> 3D OBJECT DETECTION FROM IMAGES GIVEN IN URL
 
-# Initialize the video capture object
-cap = cv2.VideoCapture(0)
+# Define a helper method to fetch images given a URL
 
-if not cap.isOpened():
-    print("Error: Could not open video stream.")
-    exit()
+def url_to_array(url):
+    req = urllib.request.urlopen(url)
+    arr = np.array(bytearray(req.read()), dtype=np.int8)
+    arr = cv2.imdecode(arr, -1)
+    arr = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
+    return arr
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("Error: Could not read frame.")
-        break
+mug = 'https://media.istockphoto.com/id/177535599/photo/coffee-cup-and-beans-on-a-white-background.jpg?s=612x612&w=0&k=20&c=dmTH9VHhHegE2-nUmANbXrgbdspWpxTKMCDLA1XeO6w='
+mug = url_to_array(mug)
 
-    # Perform inference on the frame
-    results = model(frame)
+# ------> LETS INSTANTIATE AN OBJECTRON INSTANCE AND PROCESS() INPUT FUNCTION
 
-    # Annotate the frame
-    annotated_frame = results[0].plot()
+objectron = mp_objectron.Objectron(
+    static_image_mode=True,
+    max_num_objects=5,
+    min_detection_confidence=0.2,
+    model_name='Cup')
 
-    # Display the annotated frame
-    cv2.imshow('YOLOv8 Detection', annotated_frame)
+# Inference
+results = objectron.process(mug)
 
-    # Exit on pressing 'q'
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+#--------------> DISPLAY THE RESULT
 
-cap.release()
-cv2.destroyAllWindows()
+if not results.detected_objects:
+    print(f'No box landmarks detected.')
+
+# Copy image so as not to draw on the original one
+annotated_image = mug.copy()
+for detected_object in results.detected_objects:
+    # Draw landmarks
+    mp_drawing.draw_landmarks(annotated_image,
+                              detected_object.landmarks_2d,
+                              mp_objectron.BOX_CONNECTIONS)
+
+    # Draw axis based on rotation and translation
+    mp_drawing.draw_axis(annotated_image,
+                         detected_object.rotation,
+                         detected_object.translation)
+
+#-----------> PLOT THE RESULT
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.imshow(annotated_image)
+ax.axis('off')
+plt.show()
